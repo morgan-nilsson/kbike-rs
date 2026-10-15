@@ -1,0 +1,71 @@
+[kbike-rs]
+
+# filters on resistance values
+resistance_filter = true
+resistance_display_filter = false
+
+# ===== power save settings ====
+# power_save_mode options
+# - "disabled" = Nothing beyond blanking the display and shutting down bluetooth
+# - "enabled" = Enter power save mode, Pedal will cause full restart
+# - "enabled_no_shutdown" = Enter power save mode, Pedal will no restart
+power_save_mode = "enabled"
+dim_time_seconds = 60 # seconds
+blank_time_seconds = 120 # seconds
+no_bluetooth_enter_power_save_time_seconds = 60 # seconds
+# disconnect bluetooth devices and enter the power save mode given it is enabled
+bluetooth_enter_power_save_time_seconds = 600 # seconds
+
+# ===== Display contrast settings ====
+display_contrast_full = 0xFF
+display_contrast_dim = 0x10
+
+# ===== Battery settings ====
+has_battery = true
+battery_use_battery_service = true
+battery_used_vdd_as_low = 1
+
+# flash battery icon threshold
+battery_is_low = 15 # percent
+vdd_min = 3250 # mV
+
+# ====== Resistance ======
+# Display gear as number or %
+# - "gear" - display gear as number
+# - "percent" - display gear as percent
+display_resistance_as = "gear"
+# Gear spacing
+# - "linear" - linear spacing
+# - "uneven" - uneven spacing the original keiser spacing
+gear_spacing = "uneven"
+
+# ====== Bluetooth settings ======
+bluetooth_enabled = true
+# bluetooth advertising name
+bluetooth_name = "kbike-rs"
+
+max_bluetooth_connections = 3
+
+# bluetooth provides
+# - "CPS" - Cycling Power Service
+# - "FTMS" - Fitness Machine Service
+bluetooth_provides = ["CPS", "FTMS"]
+
+# transmit power in dBm, valid values are -40, -20, -16, -12, -8, -4, 0, 2, 3, 4, 5, 6, 7, 8
+bluetooth_transmit_power = -12 # dBm
+bluetooth_led_interval = 1000 # milliseconds
+
+# ===== Console ======
+confirmation_timeout_seconds = 10 # seconds
+
+# optional settings
+use_serial_console = true
+use_serial_bluetooth = true
+
+
+# ===== Bike interface settings ======
+# saadc sampling time
+analog_sample_time = 20 # microseconds
+
+reed_pin  = "P1_08"
+wiper_pin = "P0_04"
