@@ -1,9 +1,9 @@
 #[nrf_softdevice::gatt_service(uuid = "1818")]
 pub struct CyclingPowerService {
-    #[characteristic(uuid = "2A63", read, notify)]
+    #[characteristic(uuid = "2A63", notify)]
     pub measurement: [u8; 8],
     #[characteristic(uuid = "2A65", read)]
-    pub feature: [u8; 2],
+    pub feature: [u8; 4],
     #[characteristic(uuid = "2A5D", read)]
     pub sensor_location: u8,
 }
@@ -35,7 +35,7 @@ bitflags::bitflags! {
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct CPSFeatureCharacteristics: u16 {
+    pub struct CPSFeatureCharacteristics: u32 {
         const _Pedal_POWER_BALANCE = 1 << 0;
         const _Accumulated_Torque = 1 << 1;
         const _Wheel_Revolution_Data = 1 << 2;
@@ -45,7 +45,7 @@ bitflags::bitflags! {
         const _TOP_DEAD_SPOT_ANGLE = 1 << 6;
         const _BOTTOM_DEAD_SPOT_ANGLE = 1 << 7;
         const _ACCUMULATED_ENERGY = 1 << 8;
-        // reserved 9-15
+        // reserved
     }
 }
 

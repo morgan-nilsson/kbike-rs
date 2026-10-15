@@ -9,7 +9,7 @@ use crate::{config::CONFIG, kbike_rs::{bike_interface::Board, ride_state::ride_g
 
 use {defmt_rtt as _, panic_probe as _};
 
-use embassy_nrf::{bind_interrupts, saadc};
+use embassy_nrf::{bind_interrupts, interrupt::{self, InterruptExt}, saadc};
 use nrf_softdevice::{Softdevice, ble::{advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::self, peripheral}, raw};
 use embassy_nrf::interrupt::Priority;
 
@@ -147,6 +147,7 @@ async fn main(spawner: Spawner) {
     let sd: &'static Softdevice = sd;
     spawner.spawn(softdevice_task(sd).expect("Failed to spawn softdevice task"));
 
+    interrupt::SAADC.set_priority(Priority::P3);
 
     let (crank, resistance) = board.build();
 
