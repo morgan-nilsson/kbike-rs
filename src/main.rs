@@ -10,7 +10,7 @@ use crate::{config::CONFIG, kbike_rs::{bike_interface::Board, ride_state::ride_g
 use {defmt_rtt as _, panic_probe as _};
 
 use embassy_nrf::{bind_interrupts, interrupt::{self, InterruptExt}, saadc};
-use nrf_softdevice::{Softdevice, ble::{advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::self, peripheral}, raw};
+use nrf_softdevice::{Softdevice, ble::{Connection, advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::self, peripheral}, raw};
 use embassy_nrf::interrupt::Priority;
 
 //mod config;
@@ -31,7 +31,7 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
 }
 
 #[embassy_executor::task]
-async fn ble_task(sd: &'static Softdevice, server: &'static CpsServer) {
+async fn ble_advertise(sd: &'static Softdevice, server: &'static CpsServer, spawner: Spawner) {
     let ad_data: LegacyAdvertisementPayload = LegacyAdvertisementBuilder::new()
         .flags(&[Flag::GeneralDiscovery, Flag::LE_Only])
         .services_16(nrf_softdevice::ble::advertisement_builder::ServiceList::Complete, &[ServiceUuid16::CYCLING_POWER])
@@ -50,34 +50,39 @@ async fn ble_task(sd: &'static Softdevice, server: &'static CpsServer) {
 
         match peripheral::advertise_connectable(sd, adv, &config).await{
             Ok(conn) => {
-                defmt::info!("Connected");
-
-                let gatt_fut = gatt_server::run(&conn, server, |e| match e {
-                    CpsServerEvent::Cps(CyclingPowerServiceEvent::MeasurementCccdWrite { notifications }) => {
-                        defmt::info!("CPS Measurement CCCD write: notifications={}", notifications);
-                    }
-                });
-
-                let notify_fut = async {
-                    let mut ticker = Ticker::every(Duration::from_secs(1));
-                    loop {
-                        ticker.next().await;
-                        let s = ride_get();
-                        let pkt = encode_cps_packet(s.power_w, s.crank_revs, s.last_rev_ticks);
-                        let _ = server.cps.measurement_notify(&conn, &pkt);
-
-                    }
-                };
-
-                select(gatt_fut, notify_fut).await;
-                defmt::info!("Connection closed");
+                spawner.spawn(ble_task(sd, conn, server).expect("Failed to spawn BLE task"));
             }
             Err(e) => {
                 defmt::warn!("Advertising error: {:?}", e);
             }
         }
     }
-        
+}
+
+#[embassy_executor::task(pool_size = CONFIG.max_bluetooth_connections as usize)]
+async fn ble_task(sd: &'static Softdevice, conn: Connection, server: &'static CpsServer) {
+    defmt::info!("Connected");
+
+    let gatt_fut = gatt_server::run(&conn, server, |e| match e {
+        CpsServerEvent::Cps(CyclingPowerServiceEvent::MeasurementCccdWrite { notifications }) => {
+            defmt::info!("CPS Measurement CCCD write: notifications={}", notifications);
+        }
+    });
+
+    let notify_fut = async {
+        let mut ticker = Ticker::every(Duration::from_secs(1));
+        loop {
+            ticker.next().await;
+            let s = ride_get();
+            let pkt = encode_cps_packet(s.power_w, s.crank_revs, s.last_rev_ticks);
+            let _ = server.cps.measurement_notify(&conn, &pkt);
+
+        }
+    };
+
+    select(gatt_fut, notify_fut).await;
+    defmt::info!("Connection closed");
+
 }
 
 #[embassy_executor::task]
@@ -156,5 +161,5 @@ async fn main(spawner: Spawner) {
     spawner.spawn(wiper_task(resistance).expect("Failed to spawn wiper task"));
 
     // Spawn the BLE task
-    spawner.spawn(ble_task(sd, cps_server).expect("Failed to spawn BLE task"));
+    spawner.spawn(ble_advertise(sd, cps_server, spawner).expect("Failed to spawn BLE task"));
 }
