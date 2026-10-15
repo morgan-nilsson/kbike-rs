@@ -1,0 +1,16 @@
+# Host-side unit tests for kbike-rs.
+[package]
+name = "kbike-host-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+bitflags = "2.13.2"
+critical-section = { version = "1.2", features = ["std"] }
+defmt = { version = "1.1.1", features = ["unstable-test"] }
+embassy-sync = "0.8.0"
+toml-cfg = "0.2.0"
+
+# Stand-in for embassy-nrf, which only builds for the nRF target.
+embassy-nrf = { path = "shims/embassy-nrf" }

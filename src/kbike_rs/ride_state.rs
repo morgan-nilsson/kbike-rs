@@ -1,5 +1,4 @@
 use core::cell::Cell;
-use embassy_nrf::power;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use crate::config::{str_eq, CONFIG};
 
@@ -59,22 +58,27 @@ impl RideState {
     }
 
     pub fn gear_from_resistance(&self, resistance: f32) -> u8 {
-        let mut gear = 1;
+        let mut gear = self.gears_table.len() as u8; // default to max gear
         for (i, &g) in self.gears_table.iter().enumerate() {
             if g >= resistance as f32 {
                 gear = i as u8 + 1;
                 break;
             }
         }
-        gear
+        gear.min(24)
     }
 
     pub fn update_power(&self, rpm: u16) -> i16 {
-        let gear: u8 = self.gear_from_resistance(self.resistance_position_pct);
-        debug_assert!((1..=24).contains(&gear));
-        let p90 = self.power_table[gear as usize - 1] 
-            + (self.resistance_position_pct - self.gears_table[gear as usize - 1]) 
-            * self.slope_table[gear as usize];
+        let mut i = self.gears_table.len() - 1; // default to top segment
+        for (j, &g) in self.gears_table.iter().enumerate() {
+            if g >= self.resistance_position_pct {
+                i = j;
+                break;
+            }
+        }
+        let p90 = self.power_table[i]
+            + (self.resistance_position_pct - self.gears_table[i])
+            * self.slope_table[i];
 
         let c = PC2 
             + PB2 * (rpm as f32) 

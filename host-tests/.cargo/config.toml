@@ -1,0 +1,4 @@
+# Override the parent .cargo/config.toml, which forces the thumbv7em target.
+[build]
+target = "host-tuple"
+target-dir = "../target/host-tests"

@@ -10,3 +10,6 @@ target = "thumbv7em-none-eabihf"
 
 [env]
 DEFMT_LOG = "info"
+
+[alias]
+test-host = "test --manifest-path host-tests/Cargo.toml --target host-tuple"
