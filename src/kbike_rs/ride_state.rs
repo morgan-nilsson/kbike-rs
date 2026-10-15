@@ -25,6 +25,7 @@ pub struct RideState {
     pub last_rev_ticks: u16,
     pub cadence_rpm: u16,
     pub resistance_position_pct: f32,
+    pub power_scale: f32, // 1.0 default, >1.0 for more power at same resistance, <1.0 for less
 
     gears_table: &'static [f32; 25],
     power_table: &'static [f32; 25],
@@ -42,6 +43,7 @@ impl RideState {
             last_rev_ticks: 0,
             cadence_rpm: 0,
             resistance_position_pct: 0.00,
+            power_scale: 1.0,
 
             gears_table,
             power_table,
@@ -49,26 +51,7 @@ impl RideState {
         }
     }
 
-    pub fn update_gear_spacing(&mut self, gear_spacing: &'static str) {
-        let (gears_table, power_table, slope_table) = gear_tables(gear_spacing);
-
-        self.gears_table = gears_table;
-        self.power_table = power_table;
-        self.slope_table = slope_table;
-    }
-
-    pub fn gear_from_resistance(&self, resistance: f32) -> u8 {
-        let mut gear = self.gears_table.len() as u8; // default to max gear
-        for (i, &g) in self.gears_table.iter().enumerate() {
-            if g >= resistance as f32 {
-                gear = i as u8 + 1;
-                break;
-            }
-        }
-        gear.min(24)
-    }
-
-    pub fn update_power(&self, rpm: u16) -> i16 {
+    pub fn calc_power(&self, rpm: u16) -> i16 {
         let mut i = self.gears_table.len() - 1; // default to top segment
         for (j, &g) in self.gears_table.iter().enumerate() {
             if g >= self.resistance_position_pct {
@@ -85,9 +68,9 @@ impl RideState {
             + PA2 * (rpm as f32) * (rpm as f32);
 
         // p >= 0
-        let p = (p90 * c).max(0.0);
+        let p = (p90 * c * self.power_scale).max(0.0);
         // half add for rounding
-        return (p + 0.5) as i16;
+        (p + 0.5) as i16
     }
 
 }

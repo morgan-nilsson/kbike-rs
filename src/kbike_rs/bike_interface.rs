@@ -1,5 +1,5 @@
 use embassy_nrf::{Peripherals, saadc, Peri};
-use embassy_nrf::gpio::{AnyPin, Input, Pull, Pin};
+use embassy_nrf::gpio::{AnyPin, Input, Pull};
 use embassy_nrf::saadc::{AnyInput, ChannelConfig, Input as SaadcInput, Saadc};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use embassy_futures::select::{select, Either};
@@ -96,13 +96,13 @@ impl Crank {
                     if let Some(last) = last_edge {
                         let dt_ms = now.duration_since(last).as_millis() as u16;
                         if dt_ms < CRANK_DEBOUNCE_MS { continue; } // debounce
-                        rpm = (60_000 / dt_ms) as u16;
+                        rpm = 60_000 / dt_ms;
                     }
                     last_edge = Some(now);
                     revs = revs.wrapping_add(1);
                     let ticks = cps_ticks_1024(now);
 
-                    let power = ride_get().update_power(rpm);
+                    let power = ride_get().calc_power(rpm);
 
                     ride_update(|state| {
                         state.power_w = power;
@@ -134,6 +134,11 @@ impl Resistance {
     }
 
     pub async fn run(&mut self) -> ! {
+        let power_scale = self.calibration.power_scale;
+        ride_update(|state| {
+            state.power_scale = power_scale;
+        });
+
         let mut ticker = Ticker::every(Duration::from_millis(50));
         let mut buf = [0i16; 1];
         loop {
@@ -161,7 +166,7 @@ impl Calibration {
         counts_max: 5755.0,
         power_scale: 1.0,
     };
-    pub fn is_valid(&self) -> bool {
+    pub fn _is_valid(&self) -> bool {
         self.counts_max - self.counts_min > 100.0 
             && self.power_scale > 0.1
             && self.power_scale < 10.0

@@ -1,5 +1,3 @@
-use nrf_softdevice::ble::gatt_server;
-
 #[nrf_softdevice::gatt_service(uuid = "1818")]
 pub struct CyclingPowerService {
     #[characteristic(uuid = "2A63", read, notify)]
@@ -59,9 +57,4 @@ pub fn encode_cps_packet(power_w: i16, crank_revs: u16, last_rev_ticks: u16) -> 
     packet[4..6].copy_from_slice(&crank_revs.to_le_bytes());
     packet[6..8].copy_from_slice(&last_rev_ticks.to_le_bytes());
     packet
-}
-
-pub struct CpsOptions {
-    pub enabled: bool,
-    pub sensor_location: u8,       // the only real knob; 5 = left crank
 }

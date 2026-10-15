@@ -10,7 +10,7 @@ use crate::{config::CONFIG, kbike_rs::{bike_interface::Board, ride_state::ride_g
 use {defmt_rtt as _, panic_probe as _};
 
 use embassy_nrf::{bind_interrupts, saadc};
-use nrf_softdevice::{Softdevice, ble::{advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::{self, Server}, peripheral}, raw};
+use nrf_softdevice::{Softdevice, ble::{advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::self, peripheral}, raw};
 use embassy_nrf::interrupt::Priority;
 
 //mod config;
@@ -120,7 +120,7 @@ async fn main(spawner: Spawner) {
             _bitfield_1: raw::ble_gap_cfg_role_count_t::new_bitfield_1(0),
         }),
         gap_device_name: Some(raw::ble_gap_cfg_device_name_t {
-            p_value: CONFIG.bluetooth_name.as_ptr() as *const u8 as _,
+            p_value: CONFIG.bluetooth_name.as_ptr() as *mut u8,
             current_len: CONFIG.bluetooth_name.len() as u16,
             max_len: CONFIG.bluetooth_name.len() as u16,
             write_perm: unsafe { core::mem::zeroed() }, // No write permission
