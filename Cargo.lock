@@ -748,6 +748,7 @@ dependencies = [
  "embassy-sync",
  "embassy-time",
  "embedded-graphics",
+ "heapless",
  "nrf-softdevice",
  "panic-probe",
  "sequential-storage",

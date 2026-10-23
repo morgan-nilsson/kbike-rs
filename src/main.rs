@@ -2,26 +2,28 @@
 #![no_main]
 
 use embassy_executor::Spawner;
-use embassy_futures::select::select;
-use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
-use crate::{config::CONFIG, kbike_rs::{bike_interface::Board, ride_state::ride_get}};
+use crate::{config::CONFIG, kbike_rs::{bike_interface::Board}};
 
 use {defmt_rtt as _, panic_probe as _};
 
 use embassy_nrf::{bind_interrupts, interrupt::{self, InterruptExt}, saadc};
-use nrf_softdevice::{Softdevice, ble::{Connection, advertisement_builder::{Flag, LegacyAdvertisementBuilder, LegacyAdvertisementPayload, ServiceUuid16}, gatt_server::self, peripheral}, raw};
+use nrf_softdevice::{Softdevice, raw};
 use embassy_nrf::interrupt::Priority;
+use embassy_nrf::twim::self;
+use embassy_nrf::peripherals;
+
 
 //mod config;
 mod kbike_rs;
 use kbike_rs::bike_interface::{Crank, Resistance};
-use kbike_rs::cps::{ CpsServer, CPS_FEATURES, encode_cps_packet, CpsServerEvent, CyclingPowerServiceEvent};
+use kbike_rs::bluetooth::Server;
 
 pub mod config;
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
+    TWISPI0 => twim::InterruptHandler<peripherals::TWISPI0>;
 });
 
 
@@ -30,60 +32,6 @@ async fn softdevice_task(sd: &'static Softdevice) -> ! {
     sd.run().await
 }
 
-#[embassy_executor::task]
-async fn ble_advertise(sd: &'static Softdevice, server: &'static CpsServer, spawner: Spawner) {
-    let ad_data: LegacyAdvertisementPayload = LegacyAdvertisementBuilder::new()
-        .flags(&[Flag::GeneralDiscovery, Flag::LE_Only])
-        .services_16(nrf_softdevice::ble::advertisement_builder::ServiceList::Complete, &[ServiceUuid16::CYCLING_POWER])
-        .full_name(CONFIG.bluetooth_name)
-        .build();
-
-    let scan_data: LegacyAdvertisementPayload = LegacyAdvertisementBuilder::new().build();
-
-    loop {
-        let adv = peripheral::ConnectableAdvertisement::ScannableUndirected { 
-            adv_data: &ad_data, 
-            scan_data: &scan_data,
-        };
-
-        let config = peripheral::Config::default();
-
-        match peripheral::advertise_connectable(sd, adv, &config).await{
-            Ok(conn) => {
-                spawner.spawn(ble_task(sd, conn, server).expect("Failed to spawn BLE task"));
-            }
-            Err(e) => {
-                defmt::warn!("Advertising error: {:?}", e);
-            }
-        }
-    }
-}
-
-#[embassy_executor::task(pool_size = CONFIG.max_bluetooth_connections as usize)]
-async fn ble_task(sd: &'static Softdevice, conn: Connection, server: &'static CpsServer) {
-    defmt::info!("Connected");
-
-    let gatt_fut = gatt_server::run(&conn, server, |e| match e {
-        CpsServerEvent::Cps(CyclingPowerServiceEvent::MeasurementCccdWrite { notifications }) => {
-            defmt::info!("CPS Measurement CCCD write: notifications={}", notifications);
-        }
-    });
-
-    let notify_fut = async {
-        let mut ticker = Ticker::every(Duration::from_secs(1));
-        loop {
-            ticker.next().await;
-            let s = ride_get();
-            let pkt = encode_cps_packet(s.power_w, s.crank_revs, s.last_rev_ticks);
-            let _ = server.cps.measurement_notify(&conn, &pkt);
-
-        }
-    };
-
-    select(gatt_fut, notify_fut).await;
-    defmt::info!("Connection closed");
-
-}
 
 #[embassy_executor::task]
 async fn reed_task(mut crank: Crank) -> ! {
@@ -144,22 +92,24 @@ async fn main(spawner: Spawner) {
 
     let sd = Softdevice::enable(&sd_config);
 
-    static SERVER: StaticCell<CpsServer> = StaticCell::new();
-    let cps_server = SERVER.init(CpsServer::new(sd).unwrap());
-    cps_server.cps.feature_set(&CPS_FEATURES.bits().to_le_bytes()).unwrap();
-    cps_server.cps.sensor_location_set(&5u8).unwrap();
+    static SERVER: StaticCell<Server> = StaticCell::new();
+    let server = SERVER.init(Server::new(sd).unwrap());
+    server.setup_services();
 
     let sd: &'static Softdevice = sd;
     spawner.spawn(softdevice_task(sd).expect("Failed to spawn softdevice task"));
 
     interrupt::SAADC.set_priority(Priority::P3);
 
-    let (crank, resistance) = board.build();
+    let (crank, resistance, twim) = board.build();
 
     // Spawn the tasks for the crank and resistance
     spawner.spawn(reed_task(crank).expect("Failed to spawn reed task"));
     spawner.spawn(wiper_task(resistance).expect("Failed to spawn wiper task"));
 
     // Spawn the BLE task
-    spawner.spawn(ble_advertise(sd, cps_server, spawner).expect("Failed to spawn BLE task"));
+    spawner.spawn(kbike_rs::bluetooth::ble_advertise(sd, server, spawner).expect("Failed to spawn BLE task"));
+
+    // Spawn the display task
+    spawner.spawn(kbike_rs::display::display_task(twim).expect("Failed to spawn display task"));
 }

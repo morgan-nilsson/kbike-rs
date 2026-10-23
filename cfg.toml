@@ -37,7 +37,7 @@ display_resistance_as = "gear"
 # Gear spacing
 # - "linear" - linear spacing
 # - "uneven" - uneven spacing the original keiser spacing
-gear_spacing = "uneven"
+gear_spacing = "linear"
 
 # ====== Bluetooth settings ======
 bluetooth_enabled = true

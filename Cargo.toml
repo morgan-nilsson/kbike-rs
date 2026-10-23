@@ -15,6 +15,7 @@ embassy-nrf = { version = "0.11.0", features = ["nrf52840", "time-driver-rtc1", 
 embassy-sync = "0.8.0"
 embassy-time = "0.5.1"
 embedded-graphics = "0.8.2"
+heapless = "0.9.3"
 nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice", rev = "46d6b50", features = ["nrf52840", "s140",
   "ble-peripheral", "ble-gatt-server", "critical-section-impl", "defmt"] }
 panic-probe = {version = "1.0.0", features = ["print-defmt"]}

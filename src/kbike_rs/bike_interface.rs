@@ -1,6 +1,7 @@
 use embassy_nrf::{Peripherals, saadc, Peri};
 use embassy_nrf::gpio::{AnyPin, Input, Pull};
 use embassy_nrf::saadc::{AnyInput, ChannelConfig, Input as SaadcInput, Saadc};
+use embassy_nrf::twim::{self, Twim};
 use embassy_time::{Duration, Instant, Ticker, Timer};
 use embassy_futures::select::{select, Either};
 use crate::Irqs;
@@ -15,6 +16,9 @@ pub struct Board {
     pub wiper: saadc::AnyInput<'static>,
     pub reed: Peri<'static, AnyPin>,
     pub saadc: Peri<'static, embassy_nrf::peripherals::SAADC>,
+    pub twim_pin: Peri<'static, embassy_nrf::peripherals::TWISPI0>,
+    pub scl: Peri<'static, AnyPin>,
+    pub sda: Peri<'static, AnyPin>,
 }
 
 impl Board {
@@ -45,10 +49,14 @@ impl Board {
         };
 
 
+
         Board {
            wiper,
            reed,
            saadc: p.SAADC,
+           twim_pin: p.TWISPI0,
+           scl: p.P0_11.into(), // D3
+           sda: p.P0_12.into(), // D4
         }
     }
 }
@@ -69,7 +77,7 @@ pub struct Resistance {
 
 impl Board {
     /// Splits the board into the parts each task owns.
-    pub fn build(self) -> (Crank, Resistance) {
+    pub fn build(self) -> (Crank, Resistance, Twim<'static>) {
         let input = Input::new(self.reed, Pull::Up);
 
         let resistance_config = embassy_nrf::saadc::Config::default();
@@ -79,6 +87,7 @@ impl Board {
         (
             Crank { input },
             Resistance { adc, calibration: Calibration::DEFAULT },
+            Twim::new(self.twim_pin, Irqs, self.sda, self.scl, twim::Config::default(), &mut [])
         )
     }
 }

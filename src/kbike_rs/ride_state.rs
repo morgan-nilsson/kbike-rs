@@ -18,6 +18,9 @@ const PC2: f32 = -2.70E-03;
 const PB2: f32 = 6.79E-03;
 const PA2: f32 = 4.75E-05;
 
+// below this cadence target power is converted to a gear as if at 90 rpm
+const MIN_TARGET_RPM: u16 = 30;
+
 #[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
 pub struct RideState {
     pub power_w: i16,
@@ -26,6 +29,11 @@ pub struct RideState {
     pub cadence_rpm: u16,
     pub resistance_position_pct: f32,
     pub power_scale: f32, // 1.0 default, >1.0 for more power at same resistance, <1.0 for less
+
+    // ftms specific state
+    pub is_controlled: bool,
+    pub requested_gear: Option<u8>,
+    pub target_power_w: Option<i16>, // erg mode, gear follows cadence
 
     gears_table: &'static [f32; 25],
     power_table: &'static [f32; 25],
@@ -44,6 +52,10 @@ impl RideState {
             cadence_rpm: 0,
             resistance_position_pct: 0.00,
             power_scale: 1.0,
+
+            is_controlled: false,
+            requested_gear: None,
+            target_power_w: None,
 
             gears_table,
             power_table,
@@ -73,6 +85,39 @@ impl RideState {
         (p + 0.5) as i16
     }
 
+    pub fn calc_gear(&self) -> u8 {
+        let mut i = self.gears_table.len() - 1; // default to top segment
+        for (j, &g) in self.gears_table.iter().enumerate() {
+            if g >= self.resistance_position_pct {
+                i = j;
+                break;
+            }
+        }
+        i as u8
+    }
+
+    pub fn calc_gear_from_target_power(&self, target_w: i16) -> u8 {
+        // the cadence factor collapses at low rpm, assume 90 rpm when barely pedalling
+        let rpm = if self.cadence_rpm < MIN_TARGET_RPM { 90.0 } else { self.cadence_rpm as f32 };
+        let c = PC2 + PB2 * rpm + PA2 * rpm * rpm;
+        let p90 = target_w as f32 / (c * self.power_scale);
+
+        let mut i = self.power_table.len() - 1; // default to top segment
+        for (j, &p) in self.power_table.iter().enumerate().skip(1) {
+            if p >= p90 {
+                i = j;
+                break;
+            }
+        }
+        i as u8
+    }
+
+    pub fn target_gear(&self) -> Option<u8> {
+        match self.target_power_w {
+            Some(w) => Some(self.calc_gear_from_target_power(w)),
+            None => self.requested_gear,
+        }
+    }
 }
 
 pub static RIDE: Mutex<CriticalSectionRawMutex, Cell<RideState>>

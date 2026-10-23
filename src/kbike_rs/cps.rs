@@ -8,11 +8,6 @@ pub struct CyclingPowerService {
     pub sensor_location: u8,
 }
 
-#[nrf_softdevice::gatt_server]
-pub struct CpsServer {
-    pub cps: CyclingPowerService,
-}
-
 pub const CPS_FEATURES: CPSFeatureCharacteristics = CPSFeatureCharacteristics::Crank_Revolution_Data;
 
 bitflags::bitflags! {
