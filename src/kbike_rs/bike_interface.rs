@@ -19,6 +19,7 @@ pub struct Board {
     pub twim_pin: Peri<'static, embassy_nrf::peripherals::TWISPI0>,
     pub scl: Peri<'static, AnyPin>,
     pub sda: Peri<'static, AnyPin>,
+    pub bat_vol: saadc::AnyInput<'static>,
 }
 
 impl Board {
@@ -48,6 +49,8 @@ impl Board {
             other => panic!("cfg.toml wiper_pin '{}' not in whitelist", other),
         };
 
+        let bat_vol: AnyInput<'static> = p.P0_29.degrade_saadc();
+
 
 
         Board {
@@ -57,6 +60,7 @@ impl Board {
            twim_pin: p.TWISPI0,
            scl: p.P0_11.into(), // D3
            sda: p.P0_12.into(), // D4
+           bat_vol,
         }
     }
 }
@@ -71,7 +75,7 @@ pub struct Crank {
 }
 
 pub struct Resistance {
-    adc: Saadc<'static, 1>,
+    adc: Saadc<'static, 2>,
     calibration: Calibration,
 }
 
@@ -82,7 +86,9 @@ impl Board {
 
         let resistance_config = embassy_nrf::saadc::Config::default();
         let ch = ChannelConfig::single_ended(self.wiper);
-        let adc = Saadc::new(self.saadc, Irqs, resistance_config, [ch]);
+        // piggy back the battery voltage with the resistance
+        let bat_ch = ChannelConfig::single_ended(self.bat_vol);
+        let adc = Saadc::new(self.saadc, Irqs, resistance_config, [ch, bat_ch]);
 
         (
             Crank { input },
@@ -149,18 +155,39 @@ impl Resistance {
         });
 
         let mut ticker = Ticker::every(Duration::from_millis(50));
-        let mut buf = [0i16; 1];
+        let mut buf = [0i16; 2];
+        let mut bat_acc: u32 = 0; // filtered battery mV * 16
         loop {
             ticker.next().await;
             self.adc.sample(&mut buf).await;
             let raw_resistance = buf[0];
 
             let pct = Self::positions_pct(raw_resistance, &self.calibration);
+
+            // smoothed since vbat dips whenever the radio transmits
+            let mv = battery_mv(buf[1]) as u32;
+            bat_acc = if bat_acc == 0 { mv * 16 } else { bat_acc - bat_acc / 16 + mv };
+            let filtered_mv = (bat_acc / 16) as u16;
+
             ride_update(|state| {
                 state.resistance_position_pct = pct;
+                state.update_battery(filtered_mv, usb_connected());
             });
         }
     }
+}
+
+fn battery_mv(raw: i16) -> u16 {
+    (raw.max(0) as u32 * 3600 * 2 / 4096) as u16
+}
+
+const USBREGSTATUS_VBUSDETECT: u32 = 1 << 0;
+
+// the softdevice owns POWER so usb status has to go through it, needs the softdevice enabled first
+fn usb_connected() -> bool {
+    let mut status: u32 = 0;
+    unsafe { nrf_softdevice::raw::sd_power_usbregstatus_get(&mut status) };
+    status & USBREGSTATUS_VBUSDETECT != 0
 }
 
 pub struct Calibration {

@@ -71,6 +71,64 @@ pub async fn display_task(twim: Twim<'static>) -> ! {
         let _ = write!(text, "{}", ride_state.power_w);
         Text::new(&text, Point::new(0, y), style).draw(&mut disp).unwrap();
 
+        // top right, icon is 22 px wide including the terminal
+        let icon_x = disp.size().width as i32 - 22;
+        draw_battery_icon(&mut disp, icon_x, 0, ride_state.battery_pct(), ride_state.battery_charging);
+
         disp.flush().unwrap();
+    }
+}
+
+fn draw_battery_icon<D>(disp: &mut D, x: i32, y: i32, pct: u8, charging: bool)
+where
+    D: DrawTarget<Color = BinaryColor, Error = core::convert::Infallible>,
+{
+    let battery_width: i32 = 20;
+    let battery_height: i32 = 10;
+    let battery_border = PrimitiveStyle::with_stroke(BinaryColor::On, 1);
+    let battery_fill = PrimitiveStyle::with_fill(BinaryColor::On);
+
+    // Draw battery outline
+    Rectangle::new(Point::new(x, y), Size::new(battery_width as u32, battery_height as u32))
+        .into_styled(battery_border)
+        .draw(disp)
+        .unwrap();
+
+    // Draw battery positive terminal
+    Rectangle::new(Point::new(x + battery_width, y + 3), Size::new(2, battery_height as u32 - 6))
+        .into_styled(battery_border)
+        .draw(disp)
+        .unwrap();
+
+    // Draw battery fill based on percentage
+    let fill_width = (battery_width - 2) * pct as i32 / 100;
+    if fill_width > 0 {
+        Rectangle::new(Point::new(x + 1, y + 1), Size::new(fill_width as u32, battery_height as u32 - 2))
+            .into_styled(battery_fill)
+            .draw(disp)
+            .unwrap();
+    }
+
+    // Draw charging icon if charging, inverted against whatever is underneath so it shows at any charge level
+    if charging {
+        let bolt = Triangle::new(
+            Point::new(x + battery_width / 2 - 2, y + 2),
+            Point::new(x + battery_width / 2 + 2, y + 2),
+            Point::new(x + battery_width / 2, y + battery_height - 2),
+        );
+        let fill_width = fill_width.max(0);
+        let inner_height = battery_height as u32 - 2;
+        let filled = Rectangle::new(Point::new(x + 1, y + 1), Size::new(fill_width as u32, inner_height));
+        let empty = Rectangle::new(
+            Point::new(x + 1 + fill_width, y + 1),
+            Size::new((battery_width - 2 - fill_width) as u32, inner_height),
+        );
+
+        bolt.into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
+            .draw(&mut disp.clipped(&filled))
+            .unwrap();
+        bolt.into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(&mut disp.clipped(&empty))
+            .unwrap();
     }
 }

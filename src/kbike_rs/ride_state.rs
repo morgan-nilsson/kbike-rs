@@ -21,6 +21,12 @@ const PA2: f32 = 4.75E-05;
 // below this cadence target power is converted to a gear as if at 90 rpm
 const MIN_TARGET_RPM: u16 = 30;
 
+// single cell lipo under light load (mV, %)
+const LIPO_CURVE: [(u16, u8); 9] = [
+    (3300, 0), (3500, 5), (3600, 12), (3700, 27), (3800, 45),
+    (3900, 63), (4000, 78), (4100, 90), (4200, 100),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
 pub struct RideState {
     pub power_w: i16,
@@ -34,6 +40,10 @@ pub struct RideState {
     pub is_controlled: bool,
     pub requested_gear: Option<u8>,
     pub target_power_w: Option<i16>, // erg mode, gear follows cadence
+
+    // battery info
+    pub battery_voltage_mv: u16,
+    pub battery_charging: bool,
 
     gears_table: &'static [f32; 25],
     power_table: &'static [f32; 25],
@@ -56,6 +66,9 @@ impl RideState {
             is_controlled: false,
             requested_gear: None,
             target_power_w: None,
+
+            battery_voltage_mv: 0,
+            battery_charging: false,
 
             gears_table,
             power_table,
@@ -117,6 +130,27 @@ impl RideState {
             Some(w) => Some(self.calc_gear_from_target_power(w)),
             None => self.requested_gear,
         }
+    }
+
+    // the charger runs whenever usb power is present
+    pub fn update_battery(&mut self, mv: u16, usb_connected: bool) {
+        self.battery_voltage_mv = mv;
+        self.battery_charging = usb_connected;
+    }
+
+    // percent from the lipo curve, capped at 100 while charging pushes the voltage over full
+    pub fn battery_pct(&self) -> u8 {
+        let mv = self.battery_voltage_mv;
+        if mv <= LIPO_CURVE[0].0 {
+            return 0;
+        }
+        for w in LIPO_CURVE.windows(2) {
+            let ((v0, p0), (v1, p1)) = (w[0], w[1]);
+            if mv <= v1 {
+                return p0 + ((mv - v0) as u32 * (p1 - p0) as u32 / (v1 - v0) as u32) as u8;
+            }
+        }
+        100
     }
 }
 

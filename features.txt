@@ -3,5 +3,4 @@ console system
 Auto-pause + ride summary
 Calibration drift monitoring
 Idle power management
-Battery service
 code cleanup
